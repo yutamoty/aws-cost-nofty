@@ -10,7 +10,12 @@ Parameters:
   NotificationTime:
     Type: String
     Default: "cron(0 9 * * ? *)"
-    Description: Schedule for notifications (default 9 AM UTC daily)
+    Description: Schedule for notifications (default 9 AM JST daily)
+
+  ScheduleTimeZone:
+    Type: String
+    Default: "Asia/Tokyo"
+    Description: IANA timezone for the schedule
 
 Resources:
   # IAM Role for Lambda function
@@ -254,47 +259,61 @@ Resources:
                       'body': json.dumps({'error': str(e)})
                   }
 
-  # EventBridge rule for daily scheduling
+  # IAM Role for EventBridge Scheduler to invoke Lambda
+  BillingNotificationSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: BillingNotificationSchedulerRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt BillingNotificationFunction.Arn
+                  - !Sub '${BillingNotificationFunction.Arn}:*'
+
+  # EventBridge Scheduler for daily scheduling
   BillingNotificationSchedule:
-    Type: AWS::Events::Rule
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: aws-billing-discord-schedule
       Description: Daily schedule for AWS billing notifications
       ScheduleExpression: !Ref NotificationTime
+      ScheduleExpressionTimezone: !Ref ScheduleTimeZone
       State: ENABLED
-      Targets:
-        - Arn: !GetAtt BillingNotificationFunction.Arn
-          Id: BillingNotificationTarget
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt BillingNotificationFunction.Arn
+        RoleArn: !GetAtt BillingNotificationSchedulerRole.Arn
 
-  # Test rule for immediate execution (optional)
-  BillingNotificationTestRule:
-    Type: AWS::Events::Rule
+  # Test schedule for immediate execution (optional)
+  BillingNotificationTestSchedule:
+    Type: AWS::Scheduler::Schedule
     Properties:
       Name: aws-billing-discord-test
-      Description: Test rule for immediate execution
+      Description: Test schedule for immediate execution
       ScheduleExpression: "rate(1 minute)"
+      ScheduleExpressionTimezone: !Ref ScheduleTimeZone
       State: DISABLED
-      Targets:
-        - Arn: !GetAtt BillingNotificationFunction.Arn
-          Id: BillingNotificationTestTarget
-
-  # Lambda permission for EventBridge
-  BillingNotificationPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref BillingNotificationFunction
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt BillingNotificationSchedule.Arn
-
-  # Lambda permission for test rule
-  BillingNotificationTestPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      FunctionName: !Ref BillingNotificationFunction
-      Action: lambda:InvokeFunction
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt BillingNotificationTestRule.Arn
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt BillingNotificationFunction.Arn
+        RoleArn: !GetAtt BillingNotificationSchedulerRole.Arn
 
 Outputs:
   LambdaFunctionArn:
@@ -303,8 +322,8 @@ Outputs:
     Export:
       Name: !Sub "${AWS::StackName}-LambdaFunctionArn"
 
-  ScheduleRuleArn:
-    Description: ARN of the EventBridge schedule rule
+  ScheduleArn:
+    Description: ARN of the EventBridge Scheduler schedule
     Value: !GetAtt BillingNotificationSchedule.Arn
     Export:
-      Name: !Sub "${AWS::StackName}-ScheduleRuleArn"
+      Name: !Sub "${AWS::StackName}-ScheduleArn"
