@@ -286,7 +286,7 @@ Resources:
                   - !Sub '${BillingNotificationFunction.Arn}:*'
 
   # EventBridge Scheduler for daily scheduling
-  BillingNotificationSchedule:
+  BillingNotificationDailySchedule:
     Type: AWS::Scheduler::Schedule
     Properties:
       Name: aws-billing-discord-schedule
@@ -324,6 +324,6 @@ Outputs:
 
   ScheduleArn:
     Description: ARN of the EventBridge Scheduler schedule
-    Value: !GetAtt BillingNotificationSchedule.Arn
+    Value: !GetAtt BillingNotificationDailySchedule.Arn
     Export:
       Name: !Sub "${AWS::StackName}-ScheduleArn"
