@@ -133,11 +133,22 @@ Resources:
                       prev_cost = Decimal(response_prev['ResultsByTime'][0]['Total']['BlendedCost']['Amount'])
 
                   # Get monthly cost so far
+                  # On the 1st of the month, fall back to the previous month's total
+                  # because Cost Explorer requires Start < End.
                   month_start = today.replace(day=1)
+                  if month_start == today:
+                      prev_month_end = month_start
+                      prev_month_start = (month_start - timedelta(days=1)).replace(day=1)
+                      monthly_period_start = prev_month_start
+                      monthly_period_end = prev_month_end
+                  else:
+                      monthly_period_start = month_start
+                      monthly_period_end = today
+
                   response_monthly = ce.get_cost_and_usage(
                       TimePeriod={
-                          'Start': str(month_start),
-                          'End': str(today)
+                          'Start': str(monthly_period_start),
+                          'End': str(monthly_period_end)
                       },
                       Granularity='MONTHLY',
                       Metrics=['BlendedCost']
@@ -168,7 +179,11 @@ Resources:
                               "inline": True
                           },
                           {
-                              "name": f"📊 今月の累計 ({month_start.strftime('%m月%d日')}〜)",
+                              "name": (
+                                  f"📊 {monthly_period_start.strftime('%Y年%m月')} 累計"
+                                  if month_start == today
+                                  else f"📊 今月の累計 ({month_start.strftime('%m月%d日')}〜)"
+                              ),
                               "value": f"**${float(monthly_cost):.2f}**",
                               "inline": False
                           }
